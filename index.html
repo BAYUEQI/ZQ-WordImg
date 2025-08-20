@@ -58,6 +58,20 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
         
+        * {
+            box-sizing: border-box;
+        }
+
+        /* 防止移动端出现横向滚动，以及文本/徽章等溢出 */
+        body {
+            overflow-x: hidden;
+        }
+
+        .text-wrap {
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+        
         .btn {
             padding: 1rem 1.5rem;
             border-radius: 0.375rem;
@@ -211,6 +225,12 @@
             margin: 0 auto; /* 居中显示 */
             width: 100%; /* 保持宽度响应式 */
         }
+        /* 多图模式下，容器允许自适应高度并显示全部内容 */
+        .image-container.gallery-mode {
+            aspect-ratio: auto;
+            max-height: none;
+            overflow: visible;
+        }
         
         #imageStatus {
             position: absolute;
@@ -279,6 +299,11 @@
         .hidden {
             display: none !important;
         }
+        
+        /* 图片与表格在小屏防溢出 */
+        img { max-width: 100%; height: auto; }
+        table { table-layout: fixed; width: 100%; }
+        th, td { word-break: break-word; }
 
         @media (max-width: 768px) {
             .mobile-flex-col {
@@ -303,7 +328,7 @@
     </style>
 </head>
 <body class="min-h-screen py-4">
-    <div class="container mx-auto px-4 py-4 max-w-6xl">
+    <div class="container mx-auto px-4 py-4 max-w-6xl text-wrap">
         <div class="flex items-center justify-between mb-6">
             <h1 class="text-2xl md:text-3xl font-bold flex items-center">
                 🐳&nbsp;在线文生图服务
@@ -343,7 +368,7 @@
                         <label for="prompt" class="block text-sm font-medium mb-1 flex items-center">
                             <i class="fa-solid fa-wand-magic-sparkles mr-1 text-xs"></i> 正向提示词
                         </label>
-                        <textarea id="prompt" rows="3" placeholder="描述您想要生成的图像内容及样式..." class="w-full">cyberpunk cat</textarea>
+                        <textarea id="prompt" rows="3" placeholder="描述您想要生成的图像内容及样式..." class="w-full">赛博朋克风格的猫</textarea>
                     </div>
                     
                     <div>
@@ -457,12 +482,12 @@
             <!-- 右侧图像展示 -->
             <div class="w-full lg:w-3/5">
                 <div class="card h-full p-4 space-y-4 fade-in">
-                    <div class="flex justify-between items-center">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                         <h2 class="text-lg font-semibold flex items-center">
                             <i class="fa-solid fa-image mr-2 text-primary"></i>
                             生成结果
                         </h2>
-                        <div class="flex space-x-2">
+                        <div class="flex flex-wrap gap-2 md:space-x-2 md:gap-0">
                             <button id="copyParamsButton" class="btn btn-secondary text-sm py-1 px-3 hidden">
                                 <i class="fa-solid fa-copy mr-1"></i> 复制参数
                             </button>
@@ -498,7 +523,7 @@
                         </div>
                         <span id="imageStatus" class="bg-gray-300 text-gray-700 hidden">状态</span>
                         <img id="aiImage" class="max-h-full max-w-full rounded hidden" alt="生成的图像">
-                        <div id="imageGallery" class="grid grid-cols-4 gap-2 mt-3 hidden"></div>
+                        <div id="imageGallery" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-3 hidden"></div>
                     </div>
                     
                     <div id="imageInfo" class="space-y-3 mt-2">
@@ -617,16 +642,22 @@
             // 初始化加载资源
             loadModels();
             loadRandomPrompts();
-            // 检查是否需要登录
+            // 检查是否需要登录（先看是否已登录）
             (async () => {
                 try {
-                    const res = await fetch('/api/config');
-                    if (res.ok) {
-                        const cfg = await res.json();
-                        if (cfg.require_password) {
-                            showLogin();
-                        }
+                    const cfgRes = await fetch('/api/config');
+                    if (!cfgRes.ok) return;
+                    const cfg = await cfgRes.json();
+                    if (!cfg.require_password) return;
+
+                    // 已开启密码保护，则查询当前会话是否已登录
+                    const statusRes = await fetch('/api/auth/status');
+                    if (statusRes.ok) {
+                        const s = await statusRes.json().catch(() => ({}));
+                        if (s && s.authed) return; // 已登录，无需弹窗
                     }
+                    // 未登录或状态不可用，弹出登录框
+                    showLogin();
                 } catch (_) {}
             })();
             
@@ -1032,10 +1063,12 @@
                     
                     // 设置图像信息并显示图像
                     const gallery = document.getElementById('imageGallery');
+                    const imageContainerEl = document.querySelector('.image-container');
                     gallery.innerHTML = '';
                     if (imagesArray && imagesArray.length > 1) {
                         aiImage.classList.add('hidden');
                         gallery.classList.remove('hidden');
+                        if (imageContainerEl) imageContainerEl.classList.add('gallery-mode');
                         currentImagesArray = imagesArray.slice();
                         imagesArray.forEach((src, idx) => {
                             const wrap = document.createElement('div');
@@ -1103,6 +1136,7 @@
                         gallery.classList.add('hidden');
                         currentImagesArray = null;
                         aiImage.src = base64Image;
+                        if (imageContainerEl) imageContainerEl.classList.remove('gallery-mode');
                     }
 
                     // 统一的UI完成逻辑（不依赖 onload 也能执行一次）
@@ -1274,9 +1308,9 @@
                 modal.style.justifyContent = 'center';
                 modal.style.zIndex = '1000';
                 modal.innerHTML = `
-                  <div class="max-w-5xl max-h-[90vh] p-2">
-                    <img src="${src}" class="rounded shadow-lg max-h-[85vh] mx-auto" />
-                    <div class="text-center mt-2">
+                  <div style="max-width: 90vw; max-height: 90vh; padding: 8px;">
+                    <img src="${src}" style="display:block; max-height:85vh; width:100%; height:auto; margin: 0 auto; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.2);" />
+                    <div style="text-align:center; margin-top: 8px;">
                       <button id="closeImgModal" class="btn btn-secondary">关闭</button>
                     </div>
                   </div>`;
@@ -1365,9 +1399,9 @@
             overlay.style.background = 'rgba(0,0,0,0.4)';
             overlay.style.zIndex = '1000';
             overlay.innerHTML = `
-                <div class="w-full h-full flex items-center justify-center">
-                  <div class="card p-6 w-96 bg-white dark:bg-gray-800">
-                    <h3 class="text-lg font-semibold mb-4">请输入访问密码</h3>
+                <div class="w-full h-full flex items-center justify-center p-4">
+                  <div class="card p-6 w-full max-w-sm bg-white dark:bg-gray-800">
+                    <h3 class="text-lg font-semibold mb-4 text-center">请输入访问密码</h3>
                     <input type="password" id="loginPassword" class="w-full" placeholder="访问密码" />
                     <button id="loginButton" class="btn btn-primary w-full mt-4">登录</button>
                     <p id="loginError" class="text-red-500 text-sm mt-2 hidden">密码错误</p>
