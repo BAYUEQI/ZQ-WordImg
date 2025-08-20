@@ -144,7 +144,8 @@ export default {
         return new Response(JSON.stringify(AVAILABLE_MODELS), {
           headers: {
             ...corsHeaders,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=300'
           }
         });
       } else if (path === '/api/prompts') {
@@ -152,13 +153,14 @@ export default {
         return new Response(JSON.stringify(RANDOM_PROMPTS), {
           headers: {
             ...corsHeaders,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=300'
           }
         });
       } else if (path === '/api/config') {
         // expose minimal config to client
         return new Response(JSON.stringify({ require_password: PASSWORDS.length > 0 }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' }
         });
       } else if (path === '/api/auth/status') {
         // check auth status by cookie
@@ -503,4 +505,3 @@ export default {
     }
   },
 };
-
