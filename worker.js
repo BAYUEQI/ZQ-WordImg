@@ -56,23 +56,65 @@ const AVAILABLE_MODELS = [
   }
 ];
 
-// Random prompts list
+// Random prompts list (Chinese)
 const RANDOM_PROMPTS = [
-  'cyberpunk cat samurai graphic art, blood splattered, beautiful colors',
-  '1girl, solo, outdoors, camping, night, mountains, nature, stars, moon, tent, twin ponytails, green eyes, cheerful, happy, backpack, sleeping bag, camping stove, water bottle, mountain boots, gloves, sweater, hat, flashlight,forest, rocks, river, wood, smoke, shadows, contrast, clear sky, constellations, Milky Way',
-  'masterpiece, best quality, amazing quality, very aesthetic, high resolution, ultra-detailed, absurdres, newest, scenery, anime, anime coloring, (dappled sunlight:1.2), rim light, backlit, dramatic shadow, 1girl, long blonde hair, blue eyes, shiny eyes, parted lips, medium breasts, puffy sleeve white dress, forest, flowers, white butterfly, looking at viewer',
-  'frost_glass, masterpiece, best quality, absurdres, cute girl wearing red Christmas dress, holding small reindeer, hug, braided ponytail, sidelocks, hairclip, hair ornaments, green eyes, (snowy forest, moonlight, Christmas trees), (sparkles, sparkling clothes), frosted, snow, aurora, moon, night, sharp focus, highly detailed, abstract, flowing',
-  '1girl, hatsune miku, white pupils, power elements, microphone, vibrant blue color palette, abstract,abstract background, dreamlike atmosphere, delicate linework, wind-swept hair, energy, masterpiece, best quality, amazing quality',
-  'cyberpunk cat(neon lights:1.3) clutter,ultra detailed, ctrash, chaotic, low light, contrast, dark, rain ,at night ,cinematic , dystopic, broken ground, tunnels, skyscrapers',
-  'Cyberpunk catgirl with purple hair, wearing leather and latex outfit with pink and purple cheetah print, holding a hand gun, black latex brassiere, glowing blue eyes with purple tech sunglasses, tail, large breasts, glowing techwear clothes, handguns, black leather jacket, tight shiny leather pants, cyberpunk alley background, Cyb3rWar3, Cyberware',
-  'a wide aerial view of a floating elven city in the sky, with two elven figures walking side by side across a glowing skybridge, the bridge arching between tall crystal towers, surrounded by clouds and golden light, majestic and serene atmosphere, vivid style, magical fantasy architecture',
-  'masterpiece, newest, absurdres,incredibly absurdres, best quality, amazing quality, very aesthetic, 1girl, very long hair, blonde, multi-tied hair, center-flap bangs, sunset, cumulonimbus cloud, old tree,sitting in tree, dark blue track suit, adidas, simple bird',
-  'beautiful girl, breasts, curvy, looking down scope, looking away from viewer, laying on the ground, laying ontop of jacket, aiming a sniper rifle, dark braided hair, backwards hat, armor, sleeveless, arm sleeve tattoos, muscle tone, dogtags, sweaty, foreshortening, depth of field, at night, night, alpine, lightly snowing, dusting of snow, Closeup, detailed face, freckles',
+  '赛博朋克风城市夜景，霓虹灯雨夜街道，反光地面，强烈对比度，广角镜头，电影感',
+  '清晨森林小径，阳光穿过树叶薄雾弥漫，柔和光线，高饱和度，超清细节',
+  '水墨山水，远山近水小桥人家，留白构图，国画风格，淡雅色调',
+  '可爱橘猫坐在窗台，落日与晚霞，暖色调，浅景深，柔焦',
+  '科幻机甲战士，蓝色能量核心，强烈光影，硬边金属质感，战损细节',
+  '复古胶片风人像，暖色调，轻微颗粒，高光溢出，自然肤色，50mm',
+  '海边灯塔与星空，银河拱桥，长曝光，拍岸浪花，清冷色调',
+  '蒸汽朋克飞船穿越云层，黄铜齿轮与管道，体积光，戏剧化天空',
+  '古风少女立于竹林，微风拂过衣袂，侧光，国风写意，细腻材质',
+  '极光下雪原与麋鹿，宁静辽阔，低饱和度，广角远景，细腻噪点控制',
 ];
+
+// --- Simple language detection and translation helpers ---
+const looksEnglish = (text) => {
+  if (!text) return true;
+  // If contains any non-ASCII, treat as non-English
+  if (/[^\x00-\x7F]/.test(text)) return false;
+  // ASCII-only: assume English to avoid over-translation
+  return true;
+};
+
+async function translateToEnglishIfNeeded(text, env) {
+  try {
+    if (!text || looksEnglish(text)) return text;
+    // Prefer model from env, else use a sensible default Llama Instruct
+    const model = (env && env.AI_TRANSLATE_MODEL) || '@cf/meta/llama-3.1-8b-instruct';
+    if (!env || !env.AI || typeof env.AI.run !== 'function') return text;
+    const system = 'You are a professional translator. Translate the user text into natural, concise English. Output English translation only, no quotes, no explanations.';
+    const user = `Translate into English:\n${text}`;
+    const res = await env.AI.run(model, {
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      temperature: 0.2,
+    });
+    // Cloudflare text models typically return { response: '...' } or similar
+    if (res && typeof res === 'object') {
+      const out = res.response || res.text || res.output || '';
+      if (typeof out === 'string' && out.trim()) return out.trim();
+      // Some models return choices
+      if (Array.isArray(res.choices) && res.choices[0] && res.choices[0].message && res.choices[0].message.content) {
+        const alt = String(res.choices[0].message.content || '').trim();
+        if (alt) return alt;
+      }
+    } else if (typeof res === 'string' && res.trim()) {
+      return res.trim();
+    }
+  } catch (_) {
+    // ignore and fall back to original text
+  }
+  return text;
+}
 
 // Passwords for authentication
 // demo: const PASSWORDS = ['P@ssw0rd']
-const PASSWORDS = ['admin123']
+const PASSWORDS = ['bayueqi@3.1415926zqwordimg']
 
 
 export default {
@@ -116,6 +158,15 @@ export default {
       } else if (path === '/api/config') {
         // expose minimal config to client
         return new Response(JSON.stringify({ require_password: PASSWORDS.length > 0 }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } else if (path === '/api/auth/status') {
+        // check auth status by cookie
+        const cookieHeader = request.headers.get('cookie') || '';
+        const authedByCookie = /(?:^|;\s*)auth=1(?:;|$)/.test(cookieHeader);
+        const ok = PASSWORDS.length === 0 ? true : authedByCookie;
+        return new Response(JSON.stringify({ authed: ok }), {
+          status: ok ? 200 : 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       } else if (path === '/api/auth' && request.method === 'POST') {
@@ -191,10 +242,11 @@ export default {
             else if (steps <= 4) steps = 4;
             
             // Only prompt and steps
-            inputs = {
-              prompt: data.prompt || 'cyberpunk cat',
-              steps: steps
-            };
+            {
+              const rawPrompt = data.prompt || 'cyberpunk cat';
+              const promptEn = await translateToEnglishIfNeeded(rawPrompt, env);
+              inputs = { prompt: promptEn, steps };
+            }
           } else if (
             data.model === 'stable-diffusion-v1-5-img2img' ||
             data.model === 'stable-diffusion-v1-5-inpainting'
@@ -235,31 +287,43 @@ export default {
             }
 
             // 兼容一些模型对字段命名的要求：有的需要 mask_image
-            inputs = {
-              prompt: data.prompt || 'cyberpunk cat',
-              negative_prompt: data.negative_prompt || '',
+            {
+              const rawPrompt = data.prompt || 'cyberpunk cat';
+              const rawNeg = data.negative_prompt || '';
+              const promptEn = await translateToEnglishIfNeeded(rawPrompt, env);
+              const negativeEn = await translateToEnglishIfNeeded(rawNeg, env);
+              inputs = {
+                prompt: promptEn,
+                negative_prompt: negativeEn,
               // 建议使用更小的分辨率，避免 3001 内部错误
-              height: sanitizeDimension(parseInt(data.height, 10) || 512, 512),
-              width: sanitizeDimension(parseInt(data.width, 10) || 512, 512),
-              num_steps: clamp(parseInt(data.num_steps, 10) || 20, 1, 50),
-              strength: clamp(parseFloat(data.strength ?? 0.8), 0.0, 1.0),
-              guidance: clamp(parseFloat(data.guidance ?? 7.5), 0.0, 30.0),
-              seed: data.seed || parseInt((Math.random() * 1024 * 1024).toString(), 10),
-              image: [...imageResult.bytes],
-              ...(maskBytes ? { mask: [...maskBytes], mask_image: [...maskBytes] } : {})
-            };
+                height: sanitizeDimension(parseInt(data.height, 10) || 512, 512),
+                width: sanitizeDimension(parseInt(data.width, 10) || 512, 512),
+                num_steps: clamp(parseInt(data.num_steps, 10) || 20, 1, 50),
+                strength: clamp(parseFloat(data.strength ?? 0.8), 0.0, 1.0),
+                guidance: clamp(parseFloat(data.guidance ?? 7.5), 0.0, 30.0),
+                seed: data.seed || parseInt((Math.random() * 1024 * 1024).toString(), 10),
+                image: [...imageResult.bytes],
+                ...(maskBytes ? { mask: [...maskBytes], mask_image: [...maskBytes] } : {})
+              };
+            }
           } else {
             // Default input parameters
-            inputs = {
-              prompt: data.prompt || 'cyberpunk cat',
-              negative_prompt: data.negative_prompt || '',
-              height: data.height || 1024,
-              width: data.width || 1024,
-              num_steps: data.num_steps || 20,
-              strength: data.strength || 0.1,
-              guidance: data.guidance || 7.5,
-              seed: data.seed || parseInt((Math.random() * 1024 * 1024).toString(), 10),
-            };
+            {
+              const rawPrompt = data.prompt || 'cyberpunk cat';
+              const rawNeg = data.negative_prompt || '';
+              const promptEn = await translateToEnglishIfNeeded(rawPrompt, env);
+              const negativeEn = await translateToEnglishIfNeeded(rawNeg, env);
+              inputs = {
+                prompt: promptEn,
+                negative_prompt: negativeEn,
+                height: data.height || 1024,
+                width: data.width || 1024,
+                num_steps: data.num_steps || 20,
+                strength: data.strength || 0.1,
+                guidance: data.guidance || 7.5,
+                seed: data.seed || parseInt((Math.random() * 1024 * 1024).toString(), 10),
+              };
+            }
           }
 
           console.log(`Generating image with ${model} and prompt: ${inputs.prompt.substring(0, 50)}...`);
