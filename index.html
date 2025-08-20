@@ -1399,8 +1399,8 @@
             overlay.style.background = 'rgba(0,0,0,0.4)';
             overlay.style.zIndex = '1000';
             overlay.innerHTML = `
-                <div class="w-full h-full flex items-center justify-center p-4">
-                  <div class="card p-6 w-full max-w-sm bg-white dark:bg-gray-800">
+                <div class="w-full h-full" style="position:relative;">
+                  <div class="card p-6 bg-white dark:bg-gray-800" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:calc(100vw - 32px);max-width:24rem;">
                     <h3 class="text-lg font-semibold mb-4 text-center">请输入访问密码</h3>
                     <input type="password" id="loginPassword" class="w-full" placeholder="访问密码" />
                     <button id="loginButton" class="btn btn-primary w-full mt-4">登录</button>
@@ -1408,6 +1408,7 @@
                   </div>
                 </div>`;
             document.body.appendChild(overlay);
+            try { document.body.style.overflow = 'hidden'; } catch (_) {}
             document.getElementById('loginPassword').focus();
             const submitLogin = async () => {
                 const pwd = (document.getElementById('loginPassword').value || '').trim();
@@ -1421,6 +1422,7 @@
                         document.getElementById('loginError').classList.remove('hidden');
                         return;
                     }
+                    try { document.body.style.overflow = ''; } catch (_) {}
                     overlay.remove();
                 } catch (_) {
                     document.getElementById('loginError').classList.remove('hidden');
