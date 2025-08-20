@@ -114,7 +114,7 @@ async function translateToEnglishIfNeeded(text, env) {
 
 // Passwords for authentication
 // demo: const PASSWORDS = ['P@ssw0rd']
-const PASSWORDS = ['bayueqi@3.1415926zqwordimg']
+const PASSWORDS = ['admin123']
 
 
 export default {
@@ -503,3 +503,4 @@ export default {
     }
   },
 };
+
